@@ -8,15 +8,22 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Faz a chamada oficial na API do Chatwoot buscando as conversas abertas
-    const response = await fetch(`${chatwootUrl}/api/v1/accounts/${accountId}/conversations`, {
+    // Adicionado filtros para trazer conversas atribuídas, não atribuídas e de todos os status
+    const apiUrl = `${chatwootUrl}/api/v1/accounts/${accountId}/conversations?status=all&conversation_type=all`;
+    
+    const response = await fetch(apiUrl, {
       method: 'GET',
-      headers: { 'api_access_token': token, 'Content-Type': 'application/json' }
+      headers: { 
+        'api_access_token': token, 
+        'Content-Type': 'application/json' 
+      }
     });
 
     if (!response.ok) throw new Error('Falha ao conectar com a API do Chatwoot');
     const data = await response.json();
-    const conversations = data.payload || [];
+    
+    // Se o Chatwoot retornar a estrutura dentro de data.payload ou direto em data
+    const conversations = data.payload || data || [];
 
     // Organiza as conversas nas colunas padrões do Kanban por status
     const statusColumns = {
@@ -25,17 +32,19 @@ export default async function handler(req, res) {
       'resolved': { id: 'resolved', name: 'Resolvidos', cards: [] }
     };
 
-    conversations.forEach(conv => {
-      const status = conv.status || 'open';
-      if (statusColumns[status]) {
-        statusColumns[status].cards.push({
-          id: conv.id.toString(),
-          display_id: conv.display_id,
-          contact_name: conv.meta?.sender?.name,
-          last_message: conv.messages?.[0]?.content || 'Mensagem de mídia/sistema'
-        });
-      }
-    });
+    if (Array.isArray(conversations)) {
+      conversations.forEach(conv => {
+        const status = conv.status || 'open';
+        if (statusColumns[status]) {
+          statusColumns[status].cards.push({
+            id: conv.id.toString(),
+            display_id: conv.display_id,
+            contact_name: conv.meta?.sender?.name || 'Cliente sem nome',
+            last_message: conv.messages?.[0]?.content || 'Mensagem de mídia/sistema'
+          });
+        }
+      });
+    }
 
     return res.status(200).json({ lists: Object.values(statusColumns) });
   } catch (error) {
