@@ -9,16 +9,24 @@ export default async function handler(req, res) {
 
   const baseUrl = chatwootUrl.replace(/\/$/, '');
 
-  // --- TRATAMENTO PARA QUANDO VOCÊ ARRASTA O CARD NA TELA (MUDAR STATUS) ---
+  // --- CORREÇÃO DO ARRASTAR E SOLTAR (POST/PUT) ---
   if (req.method === 'POST' || req.method === 'PUT') {
     try {
-      const { cardId, targetColumnId } = req.body; // Pega o ID da conversa e a coluna de destino
+      // Aceita variações de nome que o front-end pode usar (id, cardId, conversationId)
+      const cardId = req.body.cardId || req.body.id || req.body.conversationId;
+      // Aceita variações para a coluna de destino (targetColumnId, columnId, status)
+      let targetStatus = req.body.targetColumnId || req.body.columnId || req.body.status;
 
-      if (!cardId || !targetColumnId) {
-        return res.status(400).json({ error: 'Parâmetros cardId ou targetColumnId ausentes.' });
+      if (!cardId || !targetStatus) {
+        return res.status(400).json({ error: 'Identificadores do card ou da coluna ausentes no envio.' });
       }
 
-      // Rota do Chatwoot para alterar o status de uma conversa específica
+      // Normaliza nomes de colunas caso o front use maiúsculas (ex: "EM ABERTO" -> "open")
+      targetStatus = targetStatus.toString().toLowerCase();
+      if (targetStatus.includes('aberto')) targetStatus = 'open';
+      if (targetStatus.includes('agendado') || targetStatus.includes('snoozed')) targetStatus = 'snoozed';
+      if (targetStatus.includes('resolvido') || targetStatus.includes('resolved')) targetStatus = 'resolved';
+
       const updateUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations/${cardId}`;
       
       const response = await fetch(updateUrl, {
@@ -28,20 +36,27 @@ export default async function handler(req, res) {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        body: JSON.stringify({ status: targetColumnId }) // targetColumnId deve ser 'open', 'snoozed' ou 'resolved'
+        body: JSON.stringify({ status: targetStatus })
       });
 
       if (!response.ok) {
-        return res.status(response.status).json({ error: `Falha ao atualizar status no Chatwoot` });
+        return res.status(response.status).json({ error: `O Chatwoot recusou a alteração.` });
       }
 
-      return res.status(200).json({ success: true, message: 'Conversa atualizada com sucesso!' });
+      // Retorna sucesso total e também repassa o que foi alterado para o front aceitar visualmente
+      return res.status(200).json({ 
+        success: true, 
+        id: cardId, 
+        status: targetStatus,
+        message: 'Conversa movida e atualizada com sucesso!' 
+      });
+
     } catch (error) {
       return res.status(500).json({ error: error.message });
     }
   }
 
-  // --- COMPORTAMENTO PADRÃO (GET): LISTAR AS CONVERSAS NA TELA ---
+  // --- LISTAR AS CONVERSAS (GET) ---
   if (req.method === 'GET') {
     try {
       const apiUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations?status=open`;
@@ -90,8 +105,11 @@ export default async function handler(req, res) {
             lastMsg = conv.last_non_activity_message.content;
           }
 
+          // Envia propriedades duplicadas para blindar contra qualquer exigência do front-end
           statusColumns[status].cards.push({
             id: conv.id.toString(),
+            cardId: conv.id.toString(),
+            conversationId: conv.id.toString(),
             display_id: conv.display_id,
             title: contactName,
             contact_name: contactName,
