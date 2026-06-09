@@ -20,8 +20,9 @@ export default async function handler(req, res) {
       }
 
       targetStatus = targetStatus.toString().toLowerCase();
-      if (targetStatus.includes('aberto')) targetStatus = 'open';
-      if (targetStatus.includes('agendado') || targetStatus.includes('snoozed')) targetStatus = 'snoozed';
+      // Mapeamento caso o front envie o novo nome personalizado ao arrastar
+      if (targetStatus.includes('aberto') || targetStatus.includes('retorno')) targetStatus = 'open';
+      if (targetStatus.includes('agendado') || targetStatus.includes('atendimento') || targetStatus.includes('snoozed')) targetStatus = 'snoozed';
       if (targetStatus.includes('resolvido') || targetStatus.includes('resolved')) targetStatus = 'resolved';
 
       const updateUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations/${cardId}`;
@@ -77,13 +78,13 @@ export default async function handler(req, res) {
         conversations = data;
       }
 
+      // NOMES ALTERADOS AQUI: Personalização visual das colunas do Kanban
       const statusColumns = {
-        'open': { id: 'open', name: 'Em Aberto', cards: [] },
-        'snoozed': { id: 'snoozed', name: 'Agendados', cards: [] },
+        'open': { id: 'open', name: 'Retorno do envio', cards: [] },
+        'snoozed': { id: 'snoozed', name: 'Em atendimento', cards: [] },
         'resolved': { id: 'resolved', name: 'Resolvidos', cards: [] }
       };
 
-      // Objeto temporário para evitar duplicidade de contatos na mesma coluna ou entre colunas
       const vistos = new Set();
 
       if (Array.isArray(conversations)) {
@@ -91,7 +92,6 @@ export default async function handler(req, res) {
           const status = (conv.status === 'snoozed' || conv.status === 'resolved') ? conv.status : 'open';
           const contactId = conv.meta?.sender?.id || conv.contact?.id || conv.id;
           
-          // Se já listamos esse cliente em alguma coluna anterior (mais recente), ignora as antigas duplicadas
           if (vistos.has(contactId)) {
             return;
           }
