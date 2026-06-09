@@ -8,9 +8,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Chamada direta para o endpoint de conversas sem filtros conflitantes
     const baseUrl = chatwootUrl.replace(/\/$/, '');
-    const apiUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations`;
+    
+    // Injetado o parâmetro &role=administrator para garantir que o Chatwoot libere a fila global
+    const apiUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations?status=all&role=administrator`;
     
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -27,15 +28,8 @@ export default async function handler(req, res) {
     
     const data = await response.json();
     
-    // O Chatwoot pode retornar os dados direto no objeto, dentro de 'payload' ou dentro de 'data'
-    let conversations = [];
-    if (data && data.payload) {
-      conversations = data.payload;
-    } else if (Array.isArray(data)) {
-      conversations = data;
-    } else if (data && data.data) {
-      conversations = data.data;
-    }
+    // Tratamento robusto para qualquer formato de resposta do Chatwoot (Direct array ou payload)
+    const conversations = data.payload || (Array.isArray(data) ? data : data.data || []);
 
     const statusColumns = {
       'open': { id: 'open', name: 'Em Aberto', cards: [] },
@@ -45,16 +39,17 @@ export default async function handler(req, res) {
 
     if (Array.isArray(conversations)) {
       conversations.forEach(conv => {
-        // Mapeia o status da conversa (open, snoozed, resolved)
         const status = conv.status === 'snoozed' || conv.status === 'resolved' ? conv.status : 'open';
         
-        // Pega o nome do contato de forma segura vasculhando a estrutura do Chatwoot
         const contactName = conv.meta?.sender?.name || conv.contact?.name || 'Cliente sem nome';
         
-        // Pega a última mensagem enviada ou recebida
-        const lastMsg = conv.messages && conv.messages.length > 0 
-          ? conv.messages[0].content 
-          : 'Mídia ou Mensagem do Sistema';
+        // Pega de forma segura o texto da última mensagem da conversa
+        let lastMsg = 'Mídia ou Mensagem do Sistema';
+        if (conv.messages && conv.messages.length > 0) {
+          lastMsg = conv.messages[0].content || lastMsg;
+        } else if (conv.last_non_activity_message && conv.last_non_activity_message.content) {
+          lastMsg = conv.last_non_activity_message.content;
+        }
 
         statusColumns[status].cards.push({
           id: conv.id.toString(),
