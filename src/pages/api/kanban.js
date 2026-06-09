@@ -8,8 +8,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    // URL limpa para buscar as conversas da conta
-    const apiUrl = `${chatwootUrl.replace(/\/$/, '')}/api/v1/accounts/${accountId}/conversations?status=all`;
+    // Chamada direta para o endpoint de conversas sem filtros conflitantes
+    const baseUrl = chatwootUrl.replace(/\/$/, '');
+    const apiUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations`;
     
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -21,11 +22,20 @@ export default async function handler(req, res) {
     });
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: `Chatwoot respondeu com status: ${response.status}` });
+      return res.status(response.status).json({ error: `Chatwoot retornou status: ${response.status}` });
     }
     
     const data = await response.json();
-    const conversations = data.payload || (Array.isArray(data) ? data : []);
+    
+    // O Chatwoot pode retornar os dados direto no objeto, dentro de 'payload' ou dentro de 'data'
+    let conversations = [];
+    if (data && data.payload) {
+      conversations = data.payload;
+    } else if (Array.isArray(data)) {
+      conversations = data;
+    } else if (data && data.data) {
+      conversations = data.data;
+    }
 
     const statusColumns = {
       'open': { id: 'open', name: 'Em Aberto', cards: [] },
@@ -35,12 +45,22 @@ export default async function handler(req, res) {
 
     if (Array.isArray(conversations)) {
       conversations.forEach(conv => {
+        // Mapeia o status da conversa (open, snoozed, resolved)
         const status = conv.status === 'snoozed' || conv.status === 'resolved' ? conv.status : 'open';
+        
+        // Pega o nome do contato de forma segura vasculhando a estrutura do Chatwoot
+        const contactName = conv.meta?.sender?.name || conv.contact?.name || 'Cliente sem nome';
+        
+        // Pega a última mensagem enviada ou recebida
+        const lastMsg = conv.messages && conv.messages.length > 0 
+          ? conv.messages[0].content 
+          : 'Mídia ou Mensagem do Sistema';
+
         statusColumns[status].cards.push({
           id: conv.id.toString(),
           display_id: conv.display_id,
-          contact_name: conv.meta?.sender?.name || 'Cliente sem nome',
-          last_message: conv.messages?.[0]?.content || 'Mídia ou Mensagem do Sistema'
+          contact_name: contactName,
+          last_message: lastMsg
         });
       });
     }
