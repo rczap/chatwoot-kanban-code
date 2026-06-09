@@ -10,8 +10,8 @@ export default async function handler(req, res) {
   try {
     const baseUrl = chatwootUrl.replace(/\/$/, '');
     
-    // Mudamos o filtro para buscar todas as conversas sem travar no escopo do bot
-    const apiUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations?status=open`;
+    // Força o Chatwoot a listar conversas de TODOS os agentes (atribuídas ou não)
+    const apiUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations?status=open&assignee_type=all`;
     
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -28,8 +28,8 @@ export default async function handler(req, res) {
     
     const data = await response.json();
     
-    // O Chatwoot pode devolver um objeto com 'data' ou 'payload' contendo a lista
-    const conversations = data.data || data.payload || (Array.isArray(data) ? data : []);
+    // O Chatwoot pode envelopar a resposta em data.payload ou data.data
+    const conversations = data.payload || data.data || (Array.isArray(data) ? data : []);
 
     const statusColumns = {
       'open': { id: 'open', name: 'Em Aberto', cards: [] },
@@ -41,8 +41,10 @@ export default async function handler(req, res) {
       conversations.forEach(conv => {
         const status = (conv.status === 'snoozed' || conv.status === 'resolved') ? conv.status : 'open';
         
+        // Mapeamento dinâmico do nome do cliente
         const contactName = conv.meta?.sender?.name || conv.contact?.name || 'Cliente sem nome';
         
+        // Captura o conteúdo de forma segura
         let lastMsg = 'Mídia ou Mensagem do Sistema';
         if (conv.messages && conv.messages.length > 0) {
           lastMsg = conv.messages[0].content || lastMsg;
