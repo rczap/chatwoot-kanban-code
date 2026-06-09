@@ -9,22 +9,20 @@ export default async function handler(req, res) {
 
   const baseUrl = chatwootUrl.replace(/\/$/, '');
 
-  // --- CORREÇÃO DO ARRASTAR E SOLTAR (POST/PUT) ---
+  // --- ARRASTAR E SOLTAR (POST/PUT) ---
   if (req.method === 'POST' || req.method === 'PUT') {
     try {
-      // Aceita variações de nome que o front-end pode usar (id, cardId, conversationId)
       const cardId = req.body.cardId || req.body.id || req.body.conversationId;
-      // Aceita variações para a coluna de destino (targetColumnId, columnId, status)
       let targetStatus = req.body.targetColumnId || req.body.columnId || req.body.status;
 
       if (!cardId || !targetStatus) {
-        return res.status(400).json({ error: 'Identificadores do card ou da coluna ausentes no envio.' });
+        return res.status(400).json({ error: 'Identificadores ausentes.' });
       }
 
-      // Normaliza nomes de colunas caso o front use maiúsculas (ex: "EM ABERTO" -> "open")
       targetStatus = targetStatus.toString().toLowerCase();
-      if (targetStatus.includes('aberto')) targetStatus = 'open';
-      if (targetStatus.includes('agendado') || targetStatus.includes('snoozed')) targetStatus = 'snoozed';
+      // Mapeamento caso o front envie o novo nome personalizado ao arrastar
+      if (targetStatus.includes('aberto') || targetStatus.includes('retorno')) targetStatus = 'open';
+      if (targetStatus.includes('agendado') || targetStatus.includes('atendimento') || targetStatus.includes('snoozed')) targetStatus = 'snoozed';
       if (targetStatus.includes('resolvido') || targetStatus.includes('resolved')) targetStatus = 'resolved';
 
       const updateUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations/${cardId}`;
@@ -43,14 +41,7 @@ export default async function handler(req, res) {
         return res.status(response.status).json({ error: `O Chatwoot recusou a alteração.` });
       }
 
-      // Retorna sucesso total e também repassa o que foi alterado para o front aceitar visualmente
-      return res.status(200).json({ 
-        success: true, 
-        id: cardId, 
-        status: targetStatus,
-        message: 'Conversa movida e atualizada com sucesso!' 
-      });
-
+      return res.status(200).json({ success: true, id: cardId, status: targetStatus });
     } catch (error) {
       return res.status(500).json({ error: error.message });
     }
@@ -59,7 +50,7 @@ export default async function handler(req, res) {
   // --- LISTAR AS CONVERSAS (GET) ---
   if (req.method === 'GET') {
     try {
-      const apiUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations?status=open`;
+      const apiUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations?status=all&assignee_type=all`;
       
       const response = await fetch(apiUrl, {
         method: 'GET',
@@ -87,15 +78,25 @@ export default async function handler(req, res) {
         conversations = data;
       }
 
+      // NOMES ALTERADOS AQUI: Personalização visual das colunas do Kanban
       const statusColumns = {
-        'open': { id: 'open', name: 'Em Aberto', cards: [] },
-        'snoozed': { id: 'snoozed', name: 'Agendados', cards: [] },
+        'open': { id: 'open', name: 'Retorno do envio', cards: [] },
+        'snoozed': { id: 'snoozed', name: 'Em atendimento', cards: [] },
         'resolved': { id: 'resolved', name: 'Resolvidos', cards: [] }
       };
+
+      const vistos = new Set();
 
       if (Array.isArray(conversations)) {
         conversations.forEach(conv => {
           const status = (conv.status === 'snoozed' || conv.status === 'resolved') ? conv.status : 'open';
+          const contactId = conv.meta?.sender?.id || conv.contact?.id || conv.id;
+          
+          if (vistos.has(contactId)) {
+            return;
+          }
+          vistos.add(contactId);
+
           const contactName = conv.meta?.sender?.name || conv.contact?.name || 'Cliente sem nome';
           
           let lastMsg = 'Mídia ou Mensagem do Sistema';
@@ -105,7 +106,6 @@ export default async function handler(req, res) {
             lastMsg = conv.last_non_activity_message.content;
           }
 
-          // Envia propriedades duplicadas para blindar contra qualquer exigência do front-end
           statusColumns[status].cards.push({
             id: conv.id.toString(),
             cardId: conv.id.toString(),
