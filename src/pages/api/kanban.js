@@ -3,26 +3,28 @@ export default async function handler(req, res) {
   const token = process.env.CHATWOOT_ACCESS_TOKEN;
   const accountId = process.env.CHATWOOT_ACCOUNT_ID;
 
-  if (!chatwootUrl || !token) {
-    return res.status(500).json({ error: 'Configurações ausentes.' });
+  if (!chatwootUrl || !token || !accountId) {
+    return res.status(500).json({ error: 'Configurações ausentes no ambiente.' });
   }
 
   try {
-    // Nova URL focada em trazer todas as conversas ativas da fila, paginando até 100 registros
-    const apiUrl = `${chatwootUrl}/api/v1/accounts/${accountId}/conversations?status=all&page=1`;
+    // URL limpa para buscar as conversas da conta
+    const apiUrl = `${chatwootUrl.replace(/\/$/, '')}/api/v1/accounts/${accountId}/conversations?status=all`;
     
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: { 
-        'api_access_token': token, 
-        'Content-Type': 'application/json' 
+        'api_access_token': token,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       }
     });
 
-    if (!response.ok) throw new Error('Falha ao conectar com a API do Chatwoot');
-    const data = await response.json();
+    if (!response.ok) {
+      return res.status(response.status).json({ error: `Chatwoot respondeu com status: ${response.status}` });
+    }
     
-    // Trata se o retorno vem dentro de payload ou direto no objeto
+    const data = await response.json();
     const conversations = data.payload || (Array.isArray(data) ? data : []);
 
     const statusColumns = {
@@ -31,17 +33,17 @@ export default async function handler(req, res) {
       'resolved': { id: 'resolved', name: 'Resolvidos', cards: [] }
     };
 
-    conversations.forEach(conv => {
-      // Garante o mapeamento do status correto ou joga para 'open' por padrão
-      const status = conv.status === 'snoozed' || conv.status === 'resolved' ? conv.status : 'open';
-      
-      statusColumns[status].cards.push({
-        id: conv.id.toString(),
-        display_id: conv.display_id,
-        contact_name: conv.meta?.sender?.name || 'Cliente sem nome',
-        last_message: conv.messages?.[0]?.content || 'Mensagem de mídia/sistema'
+    if (Array.isArray(conversations)) {
+      conversations.forEach(conv => {
+        const status = conv.status === 'snoozed' || conv.status === 'resolved' ? conv.status : 'open';
+        statusColumns[status].cards.push({
+          id: conv.id.toString(),
+          display_id: conv.display_id,
+          contact_name: conv.meta?.sender?.name || 'Cliente sem nome',
+          last_message: conv.messages?.[0]?.content || 'Mídia ou Mensagem do Sistema'
+        });
       });
-    });
+    }
 
     return res.status(200).json({ lists: Object.values(statusColumns) });
   } catch (error) {
