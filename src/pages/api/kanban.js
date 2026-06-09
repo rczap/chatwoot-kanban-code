@@ -4,14 +4,13 @@ export default async function handler(req, res) {
   const accountId = process.env.CHATWOOT_ACCOUNT_ID;
 
   if (!chatwootUrl || !token || !accountId) {
-    return res.status(500).json({ error: 'Variáveis de ambiente ausentes.' });
+    return res.status(500).json({ error: 'Variáveis de ambiente ausentes no Easypanel.' });
   }
 
   try {
     const baseUrl = chatwootUrl.replace(/\/$/, '');
-    
-    // Rota explícita especificando o tipo de conversa para evitar listas vazias por escopo de agente
-    const apiUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations?status=all&conversation_type=all`;
+    // Rota direta e global do Chatwoot sem parâmetros que filtram ou escondem chats
+    const apiUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations`;
     
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -23,46 +22,46 @@ export default async function handler(req, res) {
     });
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: `Erro Chatwoot: ${response.status}` });
+      return res.status(response.status).json({ error: `Chatwoot respondeu status: ${response.status}` });
     }
     
     const data = await response.json();
     
-    // Mapeamento dinâmico para varrer qualquer estrutura de retorno do Chatwoot (Array direto ou payload)
-    let conversations = [];
-    if (data) {
-      if (Array.isArray(data)) conversations = data;
-      else if (data.payload && Array.isArray(data.payload)) conversations = data.payload;
-      else if (data.data && Array.isArray(data.data)) conversations = data.data;
-    }
+    // Tratamento para garantir que leremos a lista independente de como o Chatwoot envie (payload ou direto)
+    const conversations = data.payload || (Array.isArray(data) ? data : data.data || []);
 
+    // Estrutura exata exigida pelo front-end para renderizar as colunas do Kanban
     const statusColumns = {
       'open': { id: 'open', name: 'Em Aberto', cards: [] },
       'snoozed': { id: 'snoozed', name: 'Agendados', cards: [] },
       'resolved': { id: 'resolved', name: 'Resolvidos', cards: [] }
     };
 
-    conversations.forEach(conv => {
-      // Normaliza status para cair nas colunas corretas do Kanban
-      let status = conv.status;
-      if (status === 'all' || !statusColumns[status]) {
-        status = 'open'; 
-      }
-      
-      const contactName = conv.meta?.sender?.name || conv.contact?.name || 'Cliente sem nome';
-      
-      let lastMsg = 'Mídia ou Mensagem do Sistema';
-      if (conv.messages && conv.messages.length > 0) {
-        lastMsg = conv.messages[0].content || lastMsg;
-      }
+    if (Array.isArray(conversations)) {
+      conversations.forEach(conv => {
+        // Mapeia o status básico (se for diferente dos 3, joga para 'open')
+        const status = (conv.status === 'snoozed' || conv.status === 'resolved') ? conv.status : 'open';
+        
+        // Coleta o nome do cliente de forma totalmente segura pelas propriedades do Chatwoot
+        const contactName = conv.meta?.sender?.name || conv.contact?.name || 'Cliente sem nome';
+        
+        // Coleta o texto da última mensagem para exibir no cartão
+        let lastMsg = 'Mídia ou Mensagem do Sistema';
+        if (conv.messages && conv.messages.length > 0) {
+          lastMsg = conv.messages[0].content || lastMsg;
+        }
 
-      statusColumns[status].cards.push({
-        id: conv.id.toString(),
-        display_id: conv.display_id,
-        contact_name: contactName,
-        last_message: lastMsg
+        // Insere o card com a nomenclatura exata que a tela lê
+        statusColumns[status].cards.push({
+          id: conv.id.toString(),
+          display_id: conv.display_id,
+          title: contactName, // Algumas versões usam 'title' ou 'contact_name'
+          contact_name: contactName,
+          description: lastMsg, // Algumas versões usam 'description' ou 'last_message'
+          last_message: lastMsg
+        });
       });
-    });
+    }
 
     return res.status(200).json({ lists: Object.values(statusColumns) });
   } catch (error) {
