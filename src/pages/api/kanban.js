@@ -49,7 +49,6 @@ export default async function handler(req, res) {
   // --- LISTAR AS CONVERSAS (GET) ---
   if (req.method === 'GET') {
     try {
-      // AJUSTE CRUCIAL: Traz todas as conversas (abertas, agendadas e resolvidas) de todos os agentes
       const apiUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations?status=all&assignee_type=all`;
       
       const response = await fetch(apiUrl, {
@@ -84,10 +83,20 @@ export default async function handler(req, res) {
         'resolved': { id: 'resolved', name: 'Resolvidos', cards: [] }
       };
 
+      // Objeto temporário para evitar duplicidade de contatos na mesma coluna ou entre colunas
+      const vistos = new Set();
+
       if (Array.isArray(conversations)) {
         conversations.forEach(conv => {
-          // Garante o mapeamento correto baseado no status real vindo do Chatwoot
           const status = (conv.status === 'snoozed' || conv.status === 'resolved') ? conv.status : 'open';
+          const contactId = conv.meta?.sender?.id || conv.contact?.id || conv.id;
+          
+          // Se já listamos esse cliente em alguma coluna anterior (mais recente), ignora as antigas duplicadas
+          if (vistos.has(contactId)) {
+            return;
+          }
+          vistos.add(contactId);
+
           const contactName = conv.meta?.sender?.name || conv.contact?.name || 'Cliente sem nome';
           
           let lastMsg = 'Mídia ou Mensagem do Sistema';
