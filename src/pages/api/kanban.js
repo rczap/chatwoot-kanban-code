@@ -10,8 +10,8 @@ export default async function handler(req, res) {
   try {
     const baseUrl = chatwootUrl.replace(/\/$/, '');
     
-    // Força o Chatwoot a listar conversas de TODOS os agentes (atribuídas ou não)
-    const apiUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations?status=open&assignee_type=all`;
+    // USANDO FILTRO AMPLO: Traz absolutamente tudo o que está aberto na conta, sem travar em agente
+    const apiUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations?status=all&assignee_type=all`;
     
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -22,14 +22,25 @@ export default async function handler(req, res) {
       }
     });
 
-    if (!response.ok) {
-      return res.status(response.status).json({ error: `Erro Chatwoot: ${response.status}` });
+    // Se falhar na primeira tentativa, tenta a rota alternativa de listagem direta por metadados
+    let conversations = [];
+    if (response.ok) {
+      const data = await response.json();
+      conversations = data.payload || data.data || (Array.isArray(data) ? data : []);
     }
-    
-    const data = await response.json();
-    
-    // O Chatwoot pode envelopar a resposta em data.payload ou data.data
-    const conversations = data.payload || data.data || (Array.isArray(data) ? data : []);
+
+    // Se a rota global falhar ou vier zerada, usamos o plano de contingência (puxar o feed geral por páginas)
+    if (conversations.length === 0) {
+      const fallbackUrl = `${baseUrl}/api/v1/accounts/${accountId}/conversations?page=1`;
+      const fallbackResponse = await fetch(fallbackUrl, {
+        method: 'GET',
+        headers: { 'api_access_token': token, 'Content-Type': 'application/json' }
+      });
+      if (fallbackResponse.ok) {
+        const fallbackData = await fallbackResponse.json();
+        conversations = fallbackData.payload || fallbackData.data || (Array.isArray(fallbackData) ? fallbackData : []);
+      }
+    }
 
     const statusColumns = {
       'open': { id: 'open', name: 'Em Aberto', cards: [] },
@@ -39,12 +50,14 @@ export default async function handler(req, res) {
 
     if (Array.isArray(conversations)) {
       conversations.forEach(conv => {
-        const status = (conv.status === 'snoozed' || conv.status === 'resolved') ? conv.status : 'open';
+        // Força cair em uma das três colunas do seu Kanban
+        let status = conv.status;
+        if (!statusColumns[status]) {
+          status = 'open';
+        }
         
-        // Mapeamento dinâmico do nome do cliente
         const contactName = conv.meta?.sender?.name || conv.contact?.name || 'Cliente sem nome';
         
-        // Captura o conteúdo de forma segura
         let lastMsg = 'Mídia ou Mensagem do Sistema';
         if (conv.messages && conv.messages.length > 0) {
           lastMsg = conv.messages[0].content || lastMsg;
