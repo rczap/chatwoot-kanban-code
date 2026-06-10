@@ -19,30 +19,22 @@ export default function Kanban() {
     carregarDados();
   }, []);
 
-  // 2. FUNÇÃO PADRÃO OFICIAL DO CHATWOOT PARA NAVEGAÇÃO ENTRE CONVERSAS
+  // 2. REDIRECIONAMENTO ABSOLUTO E INFALÍVEL PELO DOMÍNIO DO CHATWOOT
   const abrirConversaNoChatwoot = (conversationId) => {
-    if (typeof window !== 'undefined' && window.parent) {
-      const urlParams = new URLSearchParams(window.location.search);
-      const accountId = urlParams.get('account_id') || '1';
+    if (typeof window !== 'undefined' && window.top) {
+      try {
+        // Captura o ID da conta direto da URL de forma dinâmica
+        const urlParams = new URLSearchParams(window.location.search);
+        const accountId = urlParams.get('account_id') || '1';
 
-      // Comando oficial que o painel do Chatwoot escuta nativamente
-      const comandoOficial = {
-        event: 'chatwoot-dashboard-app:action',
-        action: 'navigate',
-        data: {
-          name: 'conversation',
-          params: {
-            accountId: parseInt(accountId),
-            conversationId: parseInt(conversationId)
-          }
-        }
-      };
+        // Monta o link completo usando explicitamente o domínio do seu Chatwoot
+        const linkRealChatwoot = `https://chat.rczap.com.br/app/accounts/${accountId}/conversations/${conversationId}`;
 
-      // Envia como Objeto
-      window.parent.postMessage(comandoOficial, '*');
-
-      // Envia também como Texto (JSON) por segurança
-      window.parent.postMessage(JSON.stringify(comandoOficial), '*');
+        // Redireciona a janela principal do navegador para o chat do cliente
+        window.top.location.href = linkRealChatwoot;
+      } catch (e) {
+        console.error("Erro ao redirecionar:", e);
+      }
     }
   };
 
