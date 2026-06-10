@@ -4,7 +4,7 @@ export default function Kanban() {
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 1. FUNÇÃO QUE BUSCA OS DADOS DO CHATWOOT
+  // 1. BUSCA OS DADOS DA API DO KANBAN
   const carregarDados = () => {
     fetch('/api/kanban')
       .then((res) => res.json())
@@ -19,27 +19,40 @@ export default function Kanban() {
     carregarDados();
   }, []);
 
-  // 2. FUNÇÃO MAREAVILHOSA PARA CLICAR E ABRIR O CHAT NO CHATWOOT
+  // 2. FUNÇÃO INTELIGENTE PARA CLICAR E ABRIR O CHAT NO CHATWOOT
   const abrirConversaNoChatwoot = (conversationId) => {
     if (window.parent) {
+      // Captura o ID da conta direto dos parâmetros da URL de forma dinâmica
+      const urlParams = new URLSearchParams(window.location.search);
+      const accountId = urlParams.get('account_id') || '1'; 
+
+      const targetUrl = `/app/accounts/${accountId}/conversations/${conversationId}`;
+
+      // Envia o comando em formato de Objeto
+      window.parent.postMessage({
+        event: 'setUrl',
+        url: targetUrl
+      }, '*');
+
+      // Envia também em formato de Texto (JSON) para garantir compatibilidade total
       window.parent.postMessage(
         JSON.stringify({
           event: 'setUrl',
-          url: `/app/accounts/1/conversations/${conversationId}`
+          url: targetUrl
         }),
         '*'
       );
     }
   };
 
-  // 3. FUNÇÕES NATIVAS PARA O ARRASTAR E SOLTAR FUNCIONAR VISUALMENTE E NA API
+  // 3. FUNÇÕES NATIVAS DO ARRASTAR E SOLTAR (HTML5)
   const handleDragStart = (e, cardId, sourceListId) => {
     e.dataTransfer.setData('cardId', cardId);
     e.dataTransfer.setData('sourceListId', sourceListId);
   };
 
   const handleDragOver = (e) => {
-    e.preventDefault(); // Necessário para permitir que o card seja solto na div
+    e.preventDefault(); 
   };
 
   const handleDrop = async (e, targetListId) => {
@@ -47,14 +60,12 @@ export default function Kanban() {
     const cardId = e.dataTransfer.getData('cardId');
     const sourceListId = e.dataTransfer.getData('sourceListId');
 
-    // Se soltou na mesma coluna, não faz nada
     if (sourceListId === targetListId) return;
 
-    // Atualiza o visual na tela instantaneamente (UX rápida)
+    // Atualiza o visual na tela imediatamente (Otimização de UX)
     const novasListas = [...lists];
     let cardMovido = null;
 
-    // Remove o card da coluna antiga
     novasListas.forEach(lista => {
       if (lista.id === sourceListId) {
         cardMovido = lista.cards.find(c => c.id === cardId);
@@ -62,7 +73,6 @@ export default function Kanban() {
       }
     });
 
-    // Insere o card na coluna nova
     if (cardMovido) {
       novasListas.forEach(lista => {
         if (lista.id === targetListId) {
@@ -72,7 +82,7 @@ export default function Kanban() {
       setLists(novasListas);
     }
 
-    // Envia a alteração em segundo plano para o Chatwoot salvar
+    // Salva a mudança enviando o comando para o Chatwoot via API
     try {
       const response = await fetch('/api/kanban', {
         method: 'PUT',
@@ -81,8 +91,7 @@ export default function Kanban() {
       });
 
       if (!response.ok) {
-        // Se a API der erro, recarrega o layout antigo para não enganar o usuário
-        carregarDados();
+        carregarDados(); // Se falhar, restaura a posição correta
         alert('Não foi possível mover o status no Chatwoot.');
       }
     } catch (error) {
@@ -123,9 +132,9 @@ export default function Kanban() {
                 {list.cards?.map((card) => (
                   <div 
                     key={card.id} 
-                    draggable // Deixa o card arrastável fisicamente!
+                    draggable
                     onDragStart={(e) => handleDragStart(e, card.id, list.id)}
-                    onClick={() => abrirConversaNoChatwoot(card.id)} // Clique abre o chat!
+                    onClick={() => abrirConversaNoChatwoot(card.id)}
                     style={{ 
                       background: '#fff', 
                       padding: '10px', 
