@@ -19,22 +19,30 @@ export default function Kanban() {
     carregarDados();
   }, []);
 
-  // 2. LÓGICA DE CLIQUE COMPATÍVEL COM CAIXA DE ENTRADA (INBOX-VIEW)
+  // 2. LÓGICA DE CLIQUE CORRETA VIA POSTMESSAGE (SEM QUEBRAR A URL)
   const abrirConversaNoChatwoot = (conversationId) => {
-    if (typeof window !== 'undefined' && window.top) {
-      try {
-        // Captura o ID da conta direto dos parâmetros da URL de forma dinâmica
-        const urlParams = new URLSearchParams(window.location.search);
-        const accountId = urlParams.get('account_id') || '1';
-        
-        // Monta o link absoluto para abrir direto a conversa na conta certa
-        const linkDireto = `/app/accounts/${accountId}/conversations/${conversationId}`;
-        
-        // Força a página principal do Chatwoot (a tela de fora do iframe) a mudar para o chat
-        window.top.location.href = linkDireto;
-      } catch (e) {
-        console.error("Erro ao redirecionar pelo top window:", e);
-      }
+    if (typeof window !== 'undefined' && window.parent) {
+      // Captura o ID da conta direto dos parâmetros da URL de forma dinâmica
+      const urlParams = new URLSearchParams(window.location.search);
+      const accountId = urlParams.get('account_id') || '1';
+      
+      // Criamos os dois formatos de rota que o Chatwoot aceita nativamente via postMessage
+      const targetUrl = `/app/accounts/${accountId}/conversations/${conversationId}`;
+
+      // Envia como Objeto
+      window.parent.postMessage({
+        event: 'setUrl',
+        url: targetUrl
+      }, '*');
+
+      // Envia como String (JSON) para garantir compatibilidade se a versão divergir
+      window.parent.postMessage(
+        JSON.stringify({
+          event: 'setUrl',
+          url: targetUrl
+        }),
+        '*'
+      );
     }
   };
 
