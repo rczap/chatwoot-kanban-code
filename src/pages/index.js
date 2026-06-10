@@ -19,29 +19,22 @@ export default function Kanban() {
     carregarDados();
   }, []);
 
-  // 2. FUNÇÃO INTELIGENTE PARA CLICAR E ABRIR O CHAT NO CHATWOOT
+  // 2. LÓGICA DE CLIQUE COMPATÍVEL COM CAIXA DE ENTRADA (INBOX-VIEW)
   const abrirConversaNoChatwoot = (conversationId) => {
-    if (window.parent) {
-      // Captura o ID da conta direto dos parâmetros da URL de forma dinâmica
-      const urlParams = new URLSearchParams(window.location.search);
-      const accountId = urlParams.get('account_id') || '1'; 
-
-      const targetUrl = `/app/accounts/${accountId}/conversations/${conversationId}`;
-
-      // Envia o comando em formato de Objeto
-      window.parent.postMessage({
-        event: 'setUrl',
-        url: targetUrl
-      }, '*');
-
-      // Envia também em formato de Texto (JSON) para garantir compatibilidade total
-      window.parent.postMessage(
-        JSON.stringify({
-          event: 'setUrl',
-          url: targetUrl
-        }),
-        '*'
-      );
+    if (typeof window !== 'undefined' && window.top) {
+      try {
+        // Captura o ID da conta direto dos parâmetros da URL de forma dinâmica
+        const urlParams = new URLSearchParams(window.location.search);
+        const accountId = urlParams.get('account_id') || '1';
+        
+        // Monta o link absoluto para abrir direto a conversa na conta certa
+        const linkDireto = `/app/accounts/${accountId}/conversations/${conversationId}`;
+        
+        // Força a página principal do Chatwoot (a tela de fora do iframe) a mudar para o chat
+        window.top.location.href = linkDireto;
+      } catch (e) {
+        console.error("Erro ao redirecionar pelo top window:", e);
+      }
     }
   };
 
