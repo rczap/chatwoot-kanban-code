@@ -19,30 +19,30 @@ export default function Kanban() {
     carregarDados();
   }, []);
 
-  // 2. LÓGICA DE CLIQUE CORRETA VIA POSTMESSAGE (SEM QUEBRAR A URL)
+  // 2. FUNÇÃO PADRÃO OFICIAL DO CHATWOOT PARA NAVEGAÇÃO ENTRE CONVERSAS
   const abrirConversaNoChatwoot = (conversationId) => {
     if (typeof window !== 'undefined' && window.parent) {
-      // Captura o ID da conta direto dos parâmetros da URL de forma dinâmica
       const urlParams = new URLSearchParams(window.location.search);
       const accountId = urlParams.get('account_id') || '1';
-      
-      // Criamos os dois formatos de rota que o Chatwoot aceita nativamente via postMessage
-      const targetUrl = `/app/accounts/${accountId}/conversations/${conversationId}`;
+
+      // Comando oficial que o painel do Chatwoot escuta nativamente
+      const comandoOficial = {
+        event: 'chatwoot-dashboard-app:action',
+        action: 'navigate',
+        data: {
+          name: 'conversation',
+          params: {
+            accountId: parseInt(accountId),
+            conversationId: parseInt(conversationId)
+          }
+        }
+      };
 
       // Envia como Objeto
-      window.parent.postMessage({
-        event: 'setUrl',
-        url: targetUrl
-      }, '*');
+      window.parent.postMessage(comandoOficial, '*');
 
-      // Envia como String (JSON) para garantir compatibilidade se a versão divergir
-      window.parent.postMessage(
-        JSON.stringify({
-          event: 'setUrl',
-          url: targetUrl
-        }),
-        '*'
-      );
+      // Envia também como Texto (JSON) por segurança
+      window.parent.postMessage(JSON.stringify(comandoOficial), '*');
     }
   };
 
@@ -63,7 +63,6 @@ export default function Kanban() {
 
     if (sourceListId === targetListId) return;
 
-    // Atualiza o visual na tela imediatamente (Otimização de UX)
     const novasListas = [...lists];
     let cardMovido = null;
 
@@ -83,7 +82,6 @@ export default function Kanban() {
       setLists(novasListas);
     }
 
-    // Salva a mudança enviando o comando para o Chatwoot via API
     try {
       const response = await fetch('/api/kanban', {
         method: 'PUT',
@@ -92,7 +90,7 @@ export default function Kanban() {
       });
 
       if (!response.ok) {
-        carregarDados(); // Se falhar, restaura a posição correta
+        carregarDados();
         alert('Não foi possível mover o status no Chatwoot.');
       }
     } catch (error) {
